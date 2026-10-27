@@ -1,0 +1,1354 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>SpectroGenre — CNN Music Genre Classifier</title>
+  
+  <!-- Inter & JetBrains Mono Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          fontFamily: {
+            sans: ['Inter', 'system-ui', '-apple-system', 'sans-serif'],
+            mono: ['"JetBrains Mono"', 'ui-monospace', 'monospace'],
+          },
+          colors: {
+            studio: {
+              bg: '#090B0D',
+              panel: '#121619',
+              surface: '#191F1D',
+              border: '#2A3130',
+              borderHover: '#3C4543',
+              accent: '#A8B99A',
+              accentHover: '#879B79',
+              accentPlayed: '#D0DDC7',
+              accentSubtle: '#222B26',
+              text: '#E5E8E4',
+              muted: '#929B98',
+              subtle: '#555F5C',
+              error: '#E06C75',
+              errorBg: '#1D1416',
+              errorBorder: '#3D2024'
+            }
+          }
+        }
+      }
+    };
+  </script>
+
+  <!-- Lucide Icons CDN -->
+  <script src="https://unpkg.com/lucide@latest"></script>
+
+  <style>
+    /* Custom Scrollbar */
+    ::-webkit-scrollbar {
+      width: 5px;
+      height: 5px;
+    }
+    ::-webkit-scrollbar-track {
+      background: #090B0D;
+    }
+    ::-webkit-scrollbar-thumb {
+      background: #2A3130;
+      border-radius: 3px;
+    }
+    ::-webkit-scrollbar-thumb:hover {
+      background: #3C4543;
+    }
+
+    /* Subtle background grid pattern */
+    .bg-grid-pattern {
+      background-size: 32px 32px;
+      background-image: 
+        linear-gradient(to right, rgba(255, 255, 255, 0.02) 1px, transparent 1px),
+        linear-gradient(to bottom, rgba(255, 255, 255, 0.02) 1px, transparent 1px);
+    }
+
+    /* Subtle loading waveform */
+    @keyframes pulse-wave {
+      0%, 100% { height: 4px; opacity: 0.4; }
+      50% { height: 22px; opacity: 1; }
+    }
+    @media (prefers-reduced-motion: no-preference) {
+      .audio-bar {
+        animation: pulse-wave 1.1s ease-in-out infinite;
+      }
+      .audio-bar:nth-child(2) { animation-delay: 0.15s; }
+      .audio-bar:nth-child(3) { animation-delay: 0.3s; }
+      .audio-bar:nth-child(4) { animation-delay: 0.45s; }
+      .audio-bar:nth-child(5) { animation-delay: 0.2s; }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      .audio-bar {
+        height: 12px;
+        opacity: 0.7;
+      }
+    }
+  </style>
+</head>
+
+<body class="bg-studio-bg text-studio-text font-sans antialiased min-h-screen flex flex-col bg-grid-pattern selection:bg-studio-accent/20 selection:text-studio-text">
+
+  <!-- Main Container -->
+  <div class="flex flex-col flex-grow max-w-4xl mx-auto w-full px-4 sm:px-6 py-6 sm:py-8">
+    
+    <!-- ===================================================================== -->
+    <!-- HEADER -->
+    <!-- ===================================================================== -->
+    <header class="flex items-center justify-between border-b border-studio-border pb-4 mb-8">
+      <div class="flex items-center gap-2">
+        <h1 class="text-base font-semibold tracking-tight text-studio-text">
+          SpectroGenre
+        </h1>
+        <span class="text-studio-subtle text-xs">&bull;</span>
+        <span class="text-xs text-studio-muted">Music Genre Classifier</span>
+      </div>
+
+      <!-- Service Status & Docs -->
+      <div class="flex items-center gap-3">
+        <div id="backend-status-badge" class="flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-studio-panel border border-studio-border text-xs">
+          <span id="status-dot" class="w-1.5 h-1.5 rounded-full bg-studio-subtle"></span>
+          <span id="status-text" class="text-studio-muted text-xs">Checking service...</span>
+        </div>
+        <a 
+          href="http://localhost:8000/docs" 
+          target="_blank" 
+          rel="noopener" 
+          class="text-xs text-studio-muted hover:text-studio-text transition-colors flex items-center gap-1 px-2.5 py-1 rounded-md border border-studio-border hover:border-studio-borderHover bg-studio-panel"
+          title="Interactive API Documentation"
+        >
+          <span>API Docs</span>
+          <i data-lucide="external-link" class="w-3 h-3 text-studio-subtle"></i>
+        </a>
+      </div>
+    </header>
+
+    <!-- ===================================================================== -->
+    <!-- MAIN INTERFACE -->
+    <!-- ===================================================================== -->
+    <main class="flex-grow flex flex-col justify-center">
+
+      <!-- =================================================================== -->
+      <!-- SECTION A: UPLOAD SCREEN -->
+      <!-- =================================================================== -->
+      <section id="upload-section" class="w-full">
+        <div class="max-w-xl mx-auto">
+          
+          <!-- Upload Panel -->
+          <div 
+            id="drop-zone"
+            class="rounded-xl border border-studio-border hover:border-studio-borderHover bg-studio-panel p-6 sm:p-8 text-center transition-colors cursor-pointer"
+          >
+            <!-- Hidden native file input -->
+            <input 
+              type="file" 
+              id="file-input" 
+              accept=".wav,.mp3,audio/wav,audio/mpeg" 
+              class="hidden" 
+            />
+
+            <!-- Idle Upload Prompt -->
+            <div id="upload-prompt" class="flex flex-col items-center py-4">
+              <div class="w-11 h-11 rounded-lg bg-studio-surface border border-studio-border flex items-center justify-center text-studio-accent mb-4">
+                <i data-lucide="upload" class="w-5 h-5"></i>
+              </div>
+              <h2 class="text-base font-medium text-studio-text mb-1.5">
+                Select an audio track to analyze
+              </h2>
+              <p class="text-xs text-studio-muted mb-4 max-w-sm leading-relaxed">
+                Drop your file here, or click to browse. Supports <span class="font-mono text-studio-text">.wav</span> and <span class="font-mono text-studio-text">.mp3</span> (minimum 3 seconds).
+              </p>
+              <button 
+                type="button" 
+                class="px-4 py-2 rounded-lg bg-studio-surface hover:bg-studio-border text-xs font-medium text-studio-text border border-studio-border transition-colors pointer-events-none"
+              >
+                Choose file
+              </button>
+            </div>
+
+            <!-- File Selected State with Custom Waveform Player -->
+            <div id="file-selected-card" class="hidden flex-col items-center w-full">
+              <!-- Native Headless Audio Element (preserved for browser playback) -->
+              <audio id="audio-preview" preload="auto" class="hidden"></audio>
+
+              <!-- Track Metadata Line -->
+              <div class="flex items-center justify-between w-full mb-3 px-1">
+                <div class="flex items-center gap-2 min-w-0">
+                  <div class="w-7 h-7 rounded-md bg-studio-surface border border-studio-border text-studio-accent flex items-center justify-center flex-shrink-0">
+                    <i data-lucide="music" class="w-3.5 h-3.5"></i>
+                  </div>
+                  <div class="min-w-0 text-left">
+                    <p id="selected-file-name" class="text-xs font-mono font-medium text-studio-text truncate max-w-[220px] sm:max-w-xs mb-0.5"></p>
+                    <p id="selected-file-size" class="text-[11px] font-mono text-studio-muted"></p>
+                  </div>
+                </div>
+
+                <!-- Synchronized Time Readout -->
+                <div class="flex items-center gap-1 font-mono text-xs flex-shrink-0">
+                  <span id="player-current-time" class="text-studio-text">0:00</span>
+                  <span class="text-studio-subtle">/</span>
+                  <span id="player-duration" class="text-studio-muted">0:00</span>
+                </div>
+              </div>
+
+              <!-- ============================================================= -->
+              <!-- CUSTOM WAVEFORM PLAYER COMPONENT -->
+              <!-- ============================================================= -->
+              <div id="custom-waveform-player" class="w-full bg-studio-surface border border-studio-border rounded-xl p-3 mb-5 text-left">
+                <div class="flex items-center gap-3">
+                  <!-- Circular Play/Pause Button -->
+                  <button
+                    id="player-play-btn"
+                    type="button"
+                    class="w-9 h-9 rounded-full bg-studio-panel hover:bg-studio-border border border-studio-border flex items-center justify-center text-studio-text hover:text-studio-accent transition-colors flex-shrink-0 focus:outline-none"
+                    title="Play / Pause"
+                    aria-label="Play or pause audio"
+                  >
+                    <i id="player-play-icon" data-lucide="play" class="w-4 h-4 ml-0.5 fill-current"></i>
+                  </button>
+
+                  <!-- Waveform Visualization & Interactive Seeker -->
+                  <div 
+                    id="waveform-container" 
+                    class="relative flex-1 h-12 bg-studio-panel border border-studio-border/70 rounded-lg overflow-hidden cursor-pointer select-none group focus:outline-none focus:border-studio-accent"
+                    tabindex="0"
+                    role="slider"
+                    aria-label="Audio waveform seeker"
+                    aria-valuemin="0"
+                    aria-valuemax="100"
+                    aria-valuenow="0"
+                  >
+                    <canvas id="waveform-canvas" class="w-full h-full block"></canvas>
+                  </div>
+
+                  <!-- Compact Volume Control -->
+                  <div class="flex items-center gap-1.5 flex-shrink-0">
+                    <button
+                      id="player-mute-btn"
+                      type="button"
+                      class="w-7 h-7 rounded-md hover:bg-studio-panel flex items-center justify-center text-studio-muted hover:text-studio-text transition-colors"
+                      title="Mute / Unmute"
+                      aria-label="Toggle mute"
+                    >
+                      <i id="player-volume-icon" data-lucide="volume-2" class="w-3.5 h-3.5"></i>
+                    </button>
+                    <input
+                      id="player-volume-slider"
+                      type="range"
+                      min="0"
+                      max="1"
+                      step="0.05"
+                      value="1"
+                      class="w-12 sm:w-16 h-1 bg-studio-border rounded-lg appearance-none cursor-pointer accent-studio-accent focus:outline-none"
+                      title="Volume slider"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              <!-- Action Buttons -->
+              <div class="flex items-center gap-2.5 w-full">
+                <button
+                  id="reset-file-btn"
+                  type="button"
+                  class="px-3 py-2 rounded-lg border border-studio-border hover:border-studio-borderHover text-xs text-studio-muted hover:text-studio-text bg-studio-surface transition-colors flex items-center gap-1.5"
+                  title="Remove selected file"
+                >
+                  <i data-lucide="trash-2" class="w-3.5 h-3.5"></i>
+                  <span>Remove</span>
+                </button>
+                <button
+                  id="analyze-btn"
+                  type="button"
+                  class="flex-1 flex items-center justify-center gap-2 px-4 py-2 rounded-lg bg-studio-accent hover:bg-studio-accentHover text-studio-bg text-xs font-medium tracking-wide transition-colors"
+                >
+                  <i data-lucide="play" class="w-3.5 h-3.5 fill-current"></i>
+                  <span>Analyze Audio</span>
+                </button>
+              </div>
+            </div>
+
+          </div>
+
+          <!-- Sample Track Helper -->
+          <div class="flex items-center justify-between text-xs text-studio-muted mt-3 px-1">
+            <span>GTZAN 2D-CNN Model</span>
+            <button id="load-test-track-btn" class="hover:text-studio-text transition-colors flex items-center gap-1.5 underline underline-offset-4 decoration-studio-border hover:decoration-studio-muted">
+              <i data-lucide="disc" class="w-3 h-3 text-studio-accent"></i>
+              <span>Load sample track (test.wav)</span>
+            </button>
+          </div>
+        </div>
+      </section>
+
+      <!-- =================================================================== -->
+      <!-- SECTION B: LOADING STATE -->
+      <!-- =================================================================== -->
+      <section id="loading-section" class="hidden w-full max-w-md mx-auto">
+        <div class="rounded-xl border border-studio-border bg-studio-panel p-8 text-center">
+          
+          <!-- Subtle Audio Waveform Indicator -->
+          <div class="flex items-center justify-center gap-1.5 h-8 mb-4">
+            <span class="audio-bar w-1 bg-studio-accent rounded-full"></span>
+            <span class="audio-bar w-1 bg-studio-accent rounded-full"></span>
+            <span class="audio-bar w-1 bg-studio-accent rounded-full"></span>
+            <span class="audio-bar w-1 bg-studio-accent rounded-full"></span>
+            <span class="audio-bar w-1 bg-studio-accent rounded-full"></span>
+          </div>
+
+          <h3 class="text-sm font-medium text-studio-text mb-1">
+            Analyzing audio&hellip;
+          </h3>
+          <p class="text-xs text-studio-muted mb-4">
+            Extracting mel-spectrogram slices and computing genre probabilities
+          </p>
+
+          <!-- Minimal Status Container -->
+          <div id="terminal-logs" class="text-xs font-mono text-studio-muted/80 bg-studio-surface border border-studio-border rounded-md px-3 py-2 text-left min-h-[32px] flex items-center">
+            <span class="text-studio-subtle mr-2">&bull;</span>
+            <span class="truncate">Processing audio data...</span>
+          </div>
+        </div>
+      </section>
+
+      <!-- =================================================================== -->
+      <!-- SECTION C: RESULTS DASHBOARD -->
+      <!-- =================================================================== -->
+      <section id="results-section" class="hidden w-full max-w-2xl mx-auto space-y-4">
+        
+        <!-- Primary Prediction Card -->
+        <div class="rounded-xl border border-studio-border bg-studio-panel p-6">
+          <div class="flex flex-col sm:flex-row sm:items-baseline justify-between gap-4 pb-4 border-b border-studio-border">
+            <div>
+              <span class="text-xs uppercase tracking-wider text-studio-muted block mb-1">
+                Predicted genre
+              </span>
+              <h2 id="winner-genre-name" class="text-3xl font-semibold tracking-tight text-studio-text capitalize">
+                --
+              </h2>
+              <div class="flex items-center gap-1.5 text-xs text-studio-muted mt-1.5">
+                <i data-lucide="music-2" class="w-3.5 h-3.5 text-studio-subtle"></i>
+                <span id="result-filename" class="font-mono text-studio-muted truncate max-w-xs">song.wav</span>
+              </div>
+            </div>
+
+            <!-- Confidence Metric -->
+            <div class="sm:text-right">
+              <span class="text-xs uppercase tracking-wider text-studio-muted block mb-1">
+                Confidence
+              </span>
+              <div class="flex items-baseline sm:justify-end gap-0.5">
+                <span id="winner-confidence-num" class="text-2xl font-mono font-medium text-studio-accent">
+                  0.0
+                </span>
+                <span class="text-base font-mono text-studio-accent">%</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Genre Probabilities Distribution -->
+          <div class="pt-5">
+            <div class="flex items-center justify-between mb-4">
+              <h3 class="text-xs font-medium uppercase tracking-wider text-studio-muted">
+                Genre probabilities
+              </h3>
+              <span class="text-xs font-mono text-studio-subtle">10 classes</span>
+            </div>
+
+            <!-- Dynamic Horizontal Bars Container -->
+            <div id="genre-bars-container" class="space-y-3">
+              <!-- Rendered via JavaScript -->
+            </div>
+          </div>
+        </div>
+
+        <!-- ============================================================= -->
+        <!-- COLLAPSIBLE AUDIO INSIGHTS DROPDOWN -->
+        <!-- ============================================================= -->
+        <div class="rounded-xl border border-studio-border bg-studio-panel overflow-hidden transition-all">
+          <!-- Accordion Toggle Button (Collapsed by default) -->
+          <button
+            id="audio-insights-toggle"
+            type="button"
+            class="w-full flex items-center justify-between p-4 sm:p-5 text-left hover:bg-studio-surface/50 transition-colors focus:outline-none focus:ring-1 focus:ring-studio-accent cursor-pointer"
+            aria-expanded="false"
+            aria-controls="audio-insights-content"
+          >
+            <div class="flex items-center gap-3">
+              <div class="w-7 h-7 rounded-md bg-studio-surface border border-studio-border text-studio-accent flex items-center justify-center flex-shrink-0">
+                <i data-lucide="sliders" class="w-3.5 h-3.5"></i>
+              </div>
+              <div>
+                <div class="flex items-center gap-2">
+                  <h3 class="text-sm font-medium text-studio-text">Audio Insights</h3>
+                  <span class="px-2 py-0.5 rounded text-[11px] font-mono bg-studio-surface border border-studio-border text-studio-muted">Spectrogram & Signal Metrics</span>
+                </div>
+                <p class="text-xs text-studio-muted mt-0.5">Inspect input mel-spectrogram tensors and supplementary acoustic features</p>
+              </div>
+            </div>
+            <i id="audio-insights-chevron" data-lucide="chevron-down" class="w-4 h-4 text-studio-muted transition-transform duration-200"></i>
+          </button>
+
+          <!-- Collapsible Content Panel (Hidden by default) -->
+          <div id="audio-insights-content" class="hidden border-t border-studio-border p-5 sm:p-6 space-y-6">
+            
+            <!-- 1. Mel-Spectrogram (CNN Input Tensor) -->
+            <div>
+              <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-3">
+                <div>
+                  <div class="flex items-center gap-2">
+                    <span class="w-1.5 h-1.5 rounded-full bg-studio-accent"></span>
+                    <h4 class="text-xs font-semibold uppercase tracking-wider text-studio-text">
+                      Log Mel-Spectrogram (CNN Model Input)
+                    </h4>
+                  </div>
+                  <p class="text-[11px] text-studio-muted mt-0.5">
+                    128 Mel frequency bins &times; 130 Time frames &bull; 2,048 FFT &bull; Hop 512 &bull; 22,050 Hz
+                  </p>
+                </div>
+
+                <!-- 3-Second Segment Selector -->
+                <div class="flex items-center gap-2">
+                  <label for="spectrogram-segment-select" class="text-xs text-studio-muted whitespace-nowrap">Segment:</label>
+                  <select 
+                    id="spectrogram-segment-select" 
+                    class="bg-studio-surface border border-studio-border rounded-lg text-xs font-mono text-studio-text px-2.5 py-1.5 focus:outline-none focus:border-studio-accent cursor-pointer"
+                  >
+                    <!-- Populated dynamically via JS -->
+                  </select>
+                </div>
+              </div>
+
+              <!-- Spectrogram Heatmap Card -->
+              <div class="bg-studio-surface border border-studio-border rounded-xl p-4">
+                <div class="flex items-stretch gap-2.5">
+                  <!-- Y-Axis (Frequency) -->
+                  <div class="flex flex-col justify-between items-end text-[10px] font-mono text-studio-muted pr-1 py-1 select-none w-14 flex-shrink-0">
+                    <span>11.0 kHz</span>
+                    <span>5.5 kHz</span>
+                    <span>2.0 kHz</span>
+                    <span>500 Hz</span>
+                    <span>0 Hz</span>
+                  </div>
+
+                  <!-- Heatmap Image Container -->
+                  <div class="flex-1 relative bg-black/70 rounded-lg overflow-hidden border border-studio-border/60">
+                    <img 
+                      id="spectrogram-image" 
+                      src="" 
+                      alt="Mel-Spectrogram Heatmap" 
+                      class="w-full h-44 object-fill block"
+                    />
+                    <div class="absolute top-2 right-2 px-2 py-0.5 rounded bg-studio-panel/85 border border-studio-border text-[10px] font-mono text-studio-muted backdrop-blur-sm">
+                      <span id="spectrogram-segment-badge">Segment 1 (0.0s – 3.0s)</span>
+                    </div>
+                  </div>
+
+                  <!-- Colorbar dB Scale -->
+                  <div class="hidden sm:flex flex-col justify-between items-center text-[9px] font-mono text-studio-muted pl-1 select-none flex-shrink-0">
+                    <span>0 dB</span>
+                    <div class="w-2 flex-1 my-1 rounded-sm bg-gradient-to-b from-[#fbf8b9] via-[#bf3984] to-[#000004] border border-studio-border/60"></div>
+                    <span>-80 dB</span>
+                  </div>
+                </div>
+
+                <!-- X-Axis (Time) -->
+                <div class="flex items-center justify-between text-[10px] font-mono text-studio-muted pl-16 pr-6 pt-2 select-none">
+                  <span id="spectrogram-time-start">0.00s</span>
+                  <span>0.75s</span>
+                  <span>1.50s</span>
+                  <span>2.25s</span>
+                  <span id="spectrogram-time-end">3.00s</span>
+                </div>
+              </div>
+            </div>
+
+            <!-- 2. Acoustic Signal Features (Supplementary) -->
+            <div class="pt-2 border-t border-studio-border/70">
+              <div class="flex items-center justify-between mb-3">
+                <div class="flex items-center gap-2">
+                  <span class="w-1.5 h-1.5 rounded-full bg-studio-subtle"></span>
+                  <h4 class="text-xs font-semibold uppercase tracking-wider text-studio-text">
+                    Supplementary Acoustic Signal Features
+                  </h4>
+                </div>
+                <span class="text-[11px] font-mono text-studio-subtle">Full Track Audio Metrics</span>
+              </div>
+
+              <!-- Metric Cards -->
+              <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <!-- Spectral Centroid -->
+                <div class="bg-studio-surface border border-studio-border rounded-xl p-3.5">
+                  <div class="flex items-center justify-between text-xs text-studio-muted mb-1">
+                    <span>Spectral Centroid</span>
+                    <i data-lucide="activity" class="w-3.5 h-3.5 text-studio-subtle"></i>
+                  </div>
+                  <div class="flex items-baseline gap-1 my-1">
+                    <span id="metric-spectral-centroid" class="text-lg font-mono font-medium text-studio-text">--</span>
+                    <span class="text-xs font-mono text-studio-muted">Hz</span>
+                  </div>
+                  <p class="text-[11px] text-studio-subtle leading-tight">Perceived spectral center / audio brightness</p>
+                </div>
+
+                <!-- RMS Energy -->
+                <div class="bg-studio-surface border border-studio-border rounded-xl p-3.5">
+                  <div class="flex items-center justify-between text-xs text-studio-muted mb-1">
+                    <span>RMS Energy</span>
+                    <i data-lucide="zap" class="w-3.5 h-3.5 text-studio-subtle"></i>
+                  </div>
+                  <div class="flex items-baseline gap-1 my-1">
+                    <span id="metric-rms-energy" class="text-lg font-mono font-medium text-studio-text">--</span>
+                    <span class="text-xs font-mono text-studio-muted">amplitude</span>
+                  </div>
+                  <p class="text-[11px] text-studio-subtle leading-tight">Root-mean-square loudness & dynamic power</p>
+                </div>
+
+                <!-- Zero-Crossing Rate -->
+                <div class="bg-studio-surface border border-studio-border rounded-xl p-3.5">
+                  <div class="flex items-center justify-between text-xs text-studio-muted mb-1">
+                    <span>Zero-Crossing Rate</span>
+                    <i data-lucide="bar-chart-2" class="w-3.5 h-3.5 text-studio-subtle"></i>
+                  </div>
+                  <div class="flex items-baseline gap-1 my-1">
+                    <span id="metric-zcr" class="text-lg font-mono font-medium text-studio-text">--</span>
+                  </div>
+                  <p class="text-[11px] text-studio-subtle leading-tight">Rate of signal sign changes / noisiness</p>
+                </div>
+              </div>
+
+              <!-- Context Note -->
+              <div class="mt-3 flex items-start gap-2 text-[11px] text-studio-subtle bg-studio-surface/50 border border-studio-border/50 rounded-lg p-2.5">
+                <i data-lucide="info" class="w-3.5 h-3.5 flex-shrink-0 mt-0.5 text-studio-accent"></i>
+                <span>Note: The 2D-CNN classifier was trained on 128-band Log Mel-Spectrogram slices. The acoustic features above (Centroid, RMS, ZCR) are supplementary diagnostic descriptors computed across the track via librosa.</span>
+              </div>
+            </div>
+
+          </div>
+        </div>
+
+        <!-- Action Bar -->
+        <div class="flex items-center justify-between pt-1">
+          <button
+            id="reset-app-btn"
+            type="button"
+            class="inline-flex items-center gap-2 px-3.5 py-2 rounded-lg bg-studio-panel hover:bg-studio-surface border border-studio-border hover:border-studio-borderHover text-xs font-medium text-studio-text transition-colors"
+          >
+            <i data-lucide="rotate-ccw" class="w-3.5 h-3.5 text-studio-muted"></i>
+            <span>Analyze another track</span>
+          </button>
+
+          <span class="text-xs text-studio-subtle font-mono">
+            Soft voting consensus &bull; 10 slices
+          </span>
+        </div>
+
+      </section>
+
+      <!-- =================================================================== -->
+      <!-- SECTION D: ERROR STATE -->
+      <!-- =================================================================== -->
+      <section id="error-section" class="hidden w-full max-w-md mx-auto">
+        <div class="rounded-xl border border-studio-errorBorder bg-studio-errorBg p-6 text-left">
+          <div class="flex items-center gap-2 mb-2 text-studio-error">
+            <i data-lucide="alert-circle" class="w-4 h-4"></i>
+            <h3 class="text-sm font-medium">Unable to analyze audio</h3>
+          </div>
+          <p id="error-message-text" class="text-xs text-studio-muted font-mono mb-5 whitespace-pre-wrap leading-relaxed">
+            An error occurred while processing the file.
+          </p>
+          <button
+            id="error-dismiss-btn"
+            type="button"
+            class="px-3.5 py-1.5 rounded-lg bg-studio-panel hover:bg-studio-surface border border-studio-border text-xs font-medium text-studio-text transition-colors"
+          >
+            Try again
+          </button>
+        </div>
+      </section>
+
+    </main>
+
+    <!-- ===================================================================== -->
+    <!-- FOOTER -->
+    <!-- ===================================================================== -->
+    <footer class="border-t border-studio-border pt-4 mt-8 flex items-center justify-between text-xs text-studio-subtle">
+      <span>SpectroGenre &bull; GTZAN 2D-CNN Audio Classifier</span>
+      <span>Librosa &bull; TensorFlow</span>
+    </footer>
+
+  </div>
+
+  <!-- ===================================================================== -->
+  <!-- JAVASCRIPT LOGIC -->
+  <!-- ===================================================================== -->
+  <script>
+    // Configuration
+    const API_BASE_URL = window.location.origin.startsWith('http') 
+      ? window.location.origin 
+      : 'http://localhost:8000';
+    const PREDICT_URL = `${API_BASE_URL}/predict`;
+    const WAVEFORM_URL = `${API_BASE_URL}/waveform`;
+    const HEALTH_URL = `${API_BASE_URL}/health`;
+
+    // DOM Elements
+    const dropZone = document.getElementById('drop-zone');
+    const fileInput = document.getElementById('file-input');
+    const uploadPrompt = document.getElementById('upload-prompt');
+    const fileSelectedCard = document.getElementById('file-selected-card');
+    const selectedFileName = document.getElementById('selected-file-name');
+    const selectedFileSize = document.getElementById('selected-file-size');
+    const audioPreview = document.getElementById('audio-preview');
+    const analyzeBtn = document.getElementById('analyze-btn');
+    const resetFileBtn = document.getElementById('reset-file-btn');
+    const loadTestTrackBtn = document.getElementById('load-test-track-btn');
+
+    // Custom Waveform Player DOM Elements
+    const playerPlayBtn = document.getElementById('player-play-btn');
+    const playerPlayIcon = document.getElementById('player-play-icon');
+    const waveformContainer = document.getElementById('waveform-container');
+    const waveformCanvas = document.getElementById('waveform-canvas');
+    const playerCurrentTime = document.getElementById('player-current-time');
+    const playerDuration = document.getElementById('player-duration');
+    const playerMuteBtn = document.getElementById('player-mute-btn');
+    const playerVolumeIcon = document.getElementById('player-volume-icon');
+    const playerVolumeSlider = document.getElementById('player-volume-slider');
+
+    // Section Containers
+    const uploadSection = document.getElementById('upload-section');
+    const loadingSection = document.getElementById('loading-section');
+    const resultsSection = document.getElementById('results-section');
+    const errorSection = document.getElementById('error-section');
+
+    // Loading / Status Elements
+    const terminalLogs = document.getElementById('terminal-logs');
+
+    // Results Elements
+    const winnerGenreName = document.getElementById('winner-genre-name');
+    const winnerConfidenceNum = document.getElementById('winner-confidence-num');
+    const resultFilename = document.getElementById('result-filename');
+    const genreBarsContainer = document.getElementById('genre-bars-container');
+    const resetAppBtn = document.getElementById('reset-app-btn');
+    const errorDismissBtn = document.getElementById('error-dismiss-btn');
+    const errorMessageText = document.getElementById('error-message-text');
+
+    // Audio Insights Elements
+    const audioInsightsToggle = document.getElementById('audio-insights-toggle');
+    const audioInsightsContent = document.getElementById('audio-insights-content');
+    const audioInsightsChevron = document.getElementById('audio-insights-chevron');
+    const spectrogramSegmentSelect = document.getElementById('spectrogram-segment-select');
+    const spectrogramImage = document.getElementById('spectrogram-image');
+    const spectrogramSegmentBadge = document.getElementById('spectrogram-segment-badge');
+    const spectrogramTimeStart = document.getElementById('spectrogram-time-start');
+    const spectrogramTimeEnd = document.getElementById('spectrogram-time-end');
+    const metricSpectralCentroid = document.getElementById('metric-spectral-centroid');
+    const metricRmsEnergy = document.getElementById('metric-rms-energy');
+    const metricZcr = document.getElementById('metric-zcr');
+    let currentSpectrogramSegments = [];
+
+    // Header Status Badges
+    const statusDot = document.getElementById('status-dot');
+    const statusText = document.getElementById('status-text');
+
+    // Application & Waveform Player State
+    let currentSelectedFile = null;
+    let audioObjectUrl = null;
+    let currentWaveformData = null;
+    let isWaveformLoading = false;
+    let isPointerDragging = false;
+    let animationFrameId = null;
+    let prevVolume = 1;
+
+    // Refresh Lucide Icons safely
+    function refreshIcons() {
+      if (window.lucide && typeof window.lucide.createIcons === 'function') {
+        window.lucide.createIcons();
+      }
+    }
+    refreshIcons();
+
+    // Time Formatter: converts seconds to m:ss
+    function formatTime(seconds) {
+      if (isNaN(seconds) || !isFinite(seconds) || seconds < 0) return '0:00';
+      const mins = Math.floor(seconds / 60);
+      const secs = Math.floor(seconds % 60);
+      return `${mins}:${secs < 10 ? '0' : ''}${secs}`;
+    }
+
+    // -------------------------------------------------------------------------
+    // Backend Health Ping
+    // -------------------------------------------------------------------------
+    async function checkBackendHealth() {
+      try {
+        const res = await fetch(HEALTH_URL, { method: 'GET' });
+        if (res.ok) {
+          const data = await res.json();
+          if (data.model_loaded) {
+            statusDot.className = 'w-1.5 h-1.5 rounded-full bg-studio-accent';
+            statusText.textContent = 'Model ready';
+            statusText.className = 'text-studio-muted text-xs';
+            return;
+          }
+        }
+      } catch (err) {
+        // Backend offline or unreachable
+      }
+      statusDot.className = 'w-1.5 h-1.5 rounded-full bg-studio-error';
+      statusText.textContent = 'Service offline';
+      statusText.className = 'text-studio-muted text-xs';
+    }
+    checkBackendHealth();
+    setInterval(checkBackendHealth, 15000);
+
+    // -------------------------------------------------------------------------
+    // WAVEFORM CANVAS RENDERING ENGINE
+    // -------------------------------------------------------------------------
+    function drawWaveform() {
+      if (!waveformCanvas) return;
+      const rect = waveformCanvas.getBoundingClientRect();
+      if (rect.width === 0 || rect.height === 0) return;
+
+      const dpr = window.devicePixelRatio || 1;
+      waveformCanvas.width = rect.width * dpr;
+      waveformCanvas.height = rect.height * dpr;
+
+      const ctx = waveformCanvas.getContext('2d');
+      ctx.scale(dpr, dpr);
+
+      const w = rect.width;
+      const h = rect.height;
+      ctx.clearRect(0, 0, w, h);
+
+      const duration = audioPreview.duration || 0;
+      const currentTime = audioPreview.currentTime || 0;
+      const progress = duration > 0 ? Math.min(Math.max(currentTime / duration, 0), 1) : 0;
+
+      const data = currentWaveformData;
+
+      // Loading State Placeholder Waveform
+      if (!data || data.length === 0) {
+        const barWidth = 2;
+        const spacing = 1.5;
+        const step = barWidth + spacing;
+        const totalBars = Math.floor(w / step);
+        const timeOffset = Date.now() / 250;
+
+        for (let i = 0; i < totalBars; i++) {
+          const x = i * step;
+          const barH = isWaveformLoading
+            ? Math.max(3, Math.sin(timeOffset + i * 0.15) * 8 + 14)
+            : 5;
+          const y = (h - barH) / 2;
+          ctx.fillStyle = isWaveformLoading ? '#2A3130' : '#1D2422';
+          ctx.fillRect(x, y, barWidth, barH);
+        }
+        return;
+      }
+
+      // Real Amplitude Waveform Data from Librosa
+      const numSamples = data.length;
+      const barWidth = 2;
+      const spacing = 1.5;
+      const step = barWidth + spacing;
+      const totalBars = Math.floor(w / step);
+      const playheadX = progress * w;
+
+      for (let i = 0; i < totalBars; i++) {
+        const x = i * step;
+        const sampleIdx = Math.min(
+          Math.floor((i / totalBars) * numSamples),
+          numSamples - 1
+        );
+        const rawAmp = data[sampleIdx];
+        const amp = typeof rawAmp === 'number' ? Math.min(Math.max(rawAmp, 0.04), 1.0) : 0.05;
+        const barH = Math.max(amp * (h - 8), 3);
+        const y = (h - barH) / 2;
+
+        const isPlayed = (x + barWidth) <= playheadX;
+
+        // Visual Theme: Played = #D0DDC7 (lighter sage), Unplayed = #A8B99A (muted sage)
+        ctx.fillStyle = isPlayed ? '#D0DDC7' : '#A8B99A';
+
+        // Draw cleanly rounded vertical bar
+        ctx.beginPath();
+        if (typeof ctx.roundRect === 'function') {
+          ctx.roundRect(x, y, barWidth, barH, 1);
+        } else {
+          ctx.rect(x, y, barWidth, barH);
+        }
+        ctx.fill();
+      }
+
+      // Playback Progress Scrubber Line
+      if (duration > 0) {
+        ctx.fillStyle = '#E5E8E4';
+        ctx.fillRect(Math.min(w - 1.5, Math.floor(playheadX)), 0, 1.5, h);
+      }
+    }
+
+    // High-performance 60fps render loop during audio playback
+    function startPlayAnimationLoop() {
+      if (animationFrameId) cancelAnimationFrame(animationFrameId);
+      function loop() {
+        if (!audioPreview.paused && !audioPreview.ended) {
+          playerCurrentTime.textContent = formatTime(audioPreview.currentTime);
+          drawWaveform();
+          animationFrameId = requestAnimationFrame(loop);
+        }
+      }
+      animationFrameId = requestAnimationFrame(loop);
+    }
+
+    // -------------------------------------------------------------------------
+    // WAVEFORM SEEKING INTERACTION (Mouse, Touch, Keyboard)
+    // -------------------------------------------------------------------------
+    function seekFromEvent(e) {
+      if (!waveformCanvas || !audioPreview.duration) return;
+      const rect = waveformCanvas.getBoundingClientRect();
+      const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+      const relativeX = Math.max(0, Math.min(clientX - rect.left, rect.width));
+      const ratio = relativeX / rect.width;
+
+      audioPreview.currentTime = ratio * audioPreview.duration;
+      playerCurrentTime.textContent = formatTime(audioPreview.currentTime);
+      drawWaveform();
+    }
+
+    waveformContainer.addEventListener('pointerdown', (e) => {
+      e.stopPropagation();
+      isPointerDragging = true;
+      waveformContainer.setPointerCapture(e.pointerId);
+      seekFromEvent(e);
+    });
+
+    waveformContainer.addEventListener('pointermove', (e) => {
+      if (isPointerDragging) {
+        seekFromEvent(e);
+      }
+    });
+
+    ['pointerup', 'pointercancel'].forEach(name => {
+      waveformContainer.addEventListener(name, (e) => {
+        if (isPointerDragging) {
+          isPointerDragging = false;
+          try { waveformContainer.releasePointerCapture(e.pointerId); } catch (_) {}
+        }
+      });
+    });
+
+    // Keyboard navigation (accessibility)
+    waveformContainer.addEventListener('keydown', (e) => {
+      if (!audioPreview.duration) return;
+      if (e.key === ' ' || e.key === 'Enter') {
+        e.preventDefault();
+        togglePlayPause();
+      } else if (e.key === 'ArrowLeft') {
+        e.preventDefault();
+        audioPreview.currentTime = Math.max(0, audioPreview.currentTime - 3);
+        playerCurrentTime.textContent = formatTime(audioPreview.currentTime);
+        drawWaveform();
+      } else if (e.key === 'ArrowRight') {
+        e.preventDefault();
+        audioPreview.currentTime = Math.min(audioPreview.duration, audioPreview.currentTime + 3);
+        playerCurrentTime.textContent = formatTime(audioPreview.currentTime);
+        drawWaveform();
+      }
+    });
+
+    // -------------------------------------------------------------------------
+    // AUDIO CONTROLS & EVENT SYNCHRONIZATION
+    // -------------------------------------------------------------------------
+    function togglePlayPause() {
+      if (audioPreview.paused) {
+        audioPreview.play().catch(err => {
+          console.warn('Playback prevented or file error:', err);
+        });
+      } else {
+        audioPreview.pause();
+      }
+    }
+
+    playerPlayBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      togglePlayPause();
+    });
+
+    audioPreview.addEventListener('play', () => {
+      playerPlayIcon.setAttribute('data-lucide', 'pause');
+      refreshIcons();
+      startPlayAnimationLoop();
+    });
+
+    audioPreview.addEventListener('pause', () => {
+      playerPlayIcon.setAttribute('data-lucide', 'play');
+      refreshIcons();
+      if (animationFrameId) cancelAnimationFrame(animationFrameId);
+      drawWaveform();
+    });
+
+    audioPreview.addEventListener('ended', () => {
+      playerPlayIcon.setAttribute('data-lucide', 'play');
+      refreshIcons();
+      if (animationFrameId) cancelAnimationFrame(animationFrameId);
+      audioPreview.currentTime = 0;
+      playerCurrentTime.textContent = formatTime(0);
+      drawWaveform();
+    });
+
+    audioPreview.addEventListener('loadedmetadata', () => {
+      playerDuration.textContent = formatTime(audioPreview.duration);
+      playerCurrentTime.textContent = formatTime(audioPreview.currentTime);
+      drawWaveform();
+    });
+
+    audioPreview.addEventListener('timeupdate', () => {
+      if (audioPreview.paused) {
+        playerCurrentTime.textContent = formatTime(audioPreview.currentTime);
+        drawWaveform();
+      }
+    });
+
+    // Volume Control
+    function updateVolumeIcon(vol) {
+      if (vol === 0 || audioPreview.muted) {
+        playerVolumeIcon.setAttribute('data-lucide', 'volume-x');
+      } else if (vol < 0.5) {
+        playerVolumeIcon.setAttribute('data-lucide', 'volume-1');
+      } else {
+        playerVolumeIcon.setAttribute('data-lucide', 'volume-2');
+      }
+      refreshIcons();
+    }
+
+    playerVolumeSlider.addEventListener('input', (e) => {
+      const val = parseFloat(e.target.value);
+      audioPreview.volume = val;
+      audioPreview.muted = (val === 0);
+      updateVolumeIcon(val);
+    });
+
+    playerMuteBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      if (audioPreview.muted || audioPreview.volume === 0) {
+        audioPreview.muted = false;
+        audioPreview.volume = prevVolume > 0 ? prevVolume : 1;
+        playerVolumeSlider.value = audioPreview.volume;
+      } else {
+        prevVolume = audioPreview.volume;
+        audioPreview.muted = true;
+        playerVolumeSlider.value = 0;
+      }
+      updateVolumeIcon(audioPreview.muted ? 0 : audioPreview.volume);
+    });
+
+    // Handle responsive window resize
+    window.addEventListener('resize', () => {
+      drawWaveform();
+    });
+
+    // -------------------------------------------------------------------------
+    // FETCH REAL WAVEFORM FROM BACKEND (/waveform)
+    // -------------------------------------------------------------------------
+    async function fetchWaveformForFile(file) {
+      isWaveformLoading = true;
+      currentWaveformData = null;
+      drawWaveform();
+
+      const formData = new FormData();
+      formData.append('file', file);
+
+      try {
+        const res = await fetch(WAVEFORM_URL, {
+          method: 'POST',
+          body: formData,
+        });
+        if (res.ok) {
+          const data = await res.json();
+          if (data && Array.isArray(data.waveform) && data.waveform.length > 0) {
+            currentWaveformData = data.waveform;
+            if (data.duration && (!audioPreview.duration || isNaN(audioPreview.duration))) {
+              playerDuration.textContent = formatTime(data.duration);
+            }
+          }
+        }
+      } catch (err) {
+        console.warn('Backend waveform extraction unavailable:', err);
+      } finally {
+        isWaveformLoading = false;
+        drawWaveform();
+      }
+    }
+
+    // -------------------------------------------------------------------------
+    // File Selection & Drag & Drop Handling
+    // -------------------------------------------------------------------------
+    dropZone.addEventListener('click', (e) => {
+      if (e.target.closest('#analyze-btn') || e.target.closest('#reset-file-btn') || e.target.closest('#custom-waveform-player')) {
+        return;
+      }
+      fileInput.click();
+    });
+
+    fileInput.addEventListener('change', (e) => {
+      const files = e.target.files;
+      if (files && files.length > 0) {
+        handleFileSelection(files[0]);
+      }
+    });
+
+    ['dragenter', 'dragover'].forEach(eventName => {
+      dropZone.addEventListener(eventName, (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        dropZone.classList.add('border-studio-accent', 'bg-studio-surface');
+      });
+    });
+
+    ['dragleave', 'drop'].forEach(eventName => {
+      dropZone.addEventListener(eventName, (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        dropZone.classList.remove('border-studio-accent', 'bg-studio-surface');
+      });
+    });
+
+    dropZone.addEventListener('drop', (e) => {
+      const dt = e.dataTransfer;
+      const files = dt.files;
+      if (files && files.length > 0) {
+        handleFileSelection(files[0]);
+      }
+    });
+
+    function formatBytes(bytes) {
+      if (bytes === 0) return '0 B';
+      const k = 1024;
+      const sizes = ['B', 'KB', 'MB', 'GB'];
+      const i = Math.floor(Math.log(bytes) / Math.log(k));
+      return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+    }
+
+    function handleFileSelection(file) {
+      if (!file) return;
+
+      const validExtensions = ['.wav', '.mp3'];
+      const fileExt = file.name.substring(file.name.lastIndexOf('.')).toLowerCase();
+      if (!validExtensions.includes(fileExt) && !file.type.startsWith('audio/')) {
+        showError(`Unsupported file format '${fileExt}'.\nPlease provide a .wav or .mp3 audio file.`);
+        return;
+      }
+
+      currentSelectedFile = file;
+      selectedFileName.textContent = file.name;
+      selectedFileSize.textContent = `${formatBytes(file.size)} • ${fileExt.replace('.', '').toUpperCase() || 'Audio'}`;
+
+      // Reset playback state
+      audioPreview.pause();
+      if (animationFrameId) cancelAnimationFrame(animationFrameId);
+      playerPlayIcon.setAttribute('data-lucide', 'play');
+
+      if (audioObjectUrl) {
+        URL.revokeObjectURL(audioObjectUrl);
+      }
+      audioObjectUrl = URL.createObjectURL(file);
+      audioPreview.src = audioObjectUrl;
+
+      playerCurrentTime.textContent = '0:00';
+      playerDuration.textContent = '0:00';
+
+      uploadPrompt.classList.add('hidden');
+      fileSelectedCard.classList.remove('hidden');
+      fileSelectedCard.classList.add('flex');
+
+      // Request actual waveform envelope from backend
+      fetchWaveformForFile(file);
+
+      requestAnimationFrame(() => {
+        drawWaveform();
+      });
+
+      refreshIcons();
+    }
+
+    function clearSelectedFile() {
+      currentSelectedFile = null;
+      fileInput.value = '';
+      currentWaveformData = null;
+
+      audioPreview.pause();
+      audioPreview.currentTime = 0;
+      if (animationFrameId) cancelAnimationFrame(animationFrameId);
+
+      if (audioObjectUrl) {
+        URL.revokeObjectURL(audioObjectUrl);
+        audioObjectUrl = null;
+      }
+      audioPreview.src = '';
+
+      playerPlayIcon.setAttribute('data-lucide', 'play');
+      playerCurrentTime.textContent = '0:00';
+      playerDuration.textContent = '0:00';
+
+      fileSelectedCard.classList.add('hidden');
+      fileSelectedCard.classList.remove('flex');
+      uploadPrompt.classList.remove('hidden');
+
+      drawWaveform();
+    }
+
+    resetFileBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      clearSelectedFile();
+    });
+
+    // -------------------------------------------------------------------------
+    // Sample Audio Track Helper
+    // -------------------------------------------------------------------------
+    loadTestTrackBtn.addEventListener('click', async (e) => {
+      e.preventDefault();
+      try {
+        statusText.textContent = 'Loading sample...';
+        const res = await fetch(`${API_BASE_URL}/test.wav`);
+        if (!res.ok) throw new Error('Could not fetch test.wav from backend.');
+        const blob = await res.blob();
+        const testFile = new File([blob], 'test.wav', { type: 'audio/wav' });
+        handleFileSelection(testFile);
+        checkBackendHealth();
+      } catch (err) {
+        showError("Could not load sample track 'test.wav'. You can drag and drop your own audio file into the upload zone.");
+      }
+    });
+
+    // -------------------------------------------------------------------------
+    // Audio Analysis & API Request
+    // -------------------------------------------------------------------------
+    analyzeBtn.addEventListener('click', async () => {
+      if (!currentSelectedFile) return;
+
+      audioPreview.pause();
+
+      uploadSection.classList.add('hidden');
+      errorSection.classList.add('hidden');
+      resultsSection.classList.add('hidden');
+      loadingSection.classList.remove('hidden');
+
+      if (terminalLogs) {
+        terminalLogs.innerHTML = `
+          <span class="text-studio-accent mr-2">&bull;</span>
+          <span class="truncate">Running 2D-CNN inference across 3-second segments...</span>
+        `;
+      }
+
+      const formData = new FormData();
+      formData.append('file', currentSelectedFile);
+
+      try {
+        const res = await fetch(PREDICT_URL, {
+          method: 'POST',
+          body: formData,
+        });
+
+        if (!res.ok) {
+          let errDetail = 'Failed to analyze audio.';
+          try {
+            const errJson = await res.json();
+            errDetail = errJson.detail || JSON.stringify(errJson);
+          } catch (_) {
+            errDetail = `HTTP ${res.status}: ${res.statusText}`;
+          }
+          throw new Error(errDetail);
+        }
+
+        const data = await res.json();
+
+        // If predict response includes waveform, cache it
+        if (data && Array.isArray(data.waveform) && data.waveform.length > 0) {
+          currentWaveformData = data.waveform;
+        }
+
+        renderResults(data);
+      } catch (error) {
+        console.error('Classification error:', error);
+        loadingSection.classList.add('hidden');
+        showError(
+          error.message || 'Error communicating with backend service. Please check that the server is active.'
+        );
+      }
+    });
+
+    // -------------------------------------------------------------------------
+    // Render Results Dashboard
+    // -------------------------------------------------------------------------
+    function renderResults(data) {
+      loadingSection.classList.add('hidden');
+      uploadSection.classList.add('hidden');
+      errorSection.classList.add('hidden');
+      resultsSection.classList.remove('hidden');
+
+      // 1. Predicted Genre & Confidence
+      winnerGenreName.textContent = data.predicted_genre;
+      winnerConfidenceNum.textContent = (data.confidence * 100).toFixed(1);
+      resultFilename.textContent = data.filename || currentSelectedFile.name;
+
+      // 2. Sort probabilities in descending order
+      const probEntries = Object.entries(data.all_probabilities || {})
+        .map(([genre, prob]) => ({ genre, prob: Number(prob) }))
+        .sort((a, b) => b.prob - a.prob);
+
+      // 3. Render Thin, Clean Horizontal Bars
+      genreBarsContainer.innerHTML = '';
+
+      probEntries.forEach((item) => {
+        const isWinner = item.genre.toLowerCase() === data.predicted_genre.toLowerCase();
+        const percentValue = (item.prob * 100).toFixed(1);
+
+        const row = document.createElement('div');
+        row.className = 'space-y-1.5';
+
+        row.innerHTML = `
+          <div class="flex items-center justify-between text-xs">
+            <span class="capitalize ${isWinner ? 'text-studio-text font-medium' : 'text-studio-muted'}">
+              ${item.genre}
+            </span>
+            <span class="font-mono text-xs ${isWinner ? 'text-studio-accent font-medium' : 'text-studio-muted'}">
+              ${percentValue}%
+            </span>
+          </div>
+          <div class="w-full h-1.5 bg-studio-surface rounded-full overflow-hidden">
+            <div 
+              class="h-full rounded-full transition-all duration-700 ease-out ${
+                isWinner ? 'bg-studio-accent' : 'bg-studio-subtle/50'
+              }" 
+              style="width: 0%"
+              data-target-width="${Math.max(item.prob * 100, 0.5)}%"
+            ></div>
+          </div>
+        `;
+
+        genreBarsContainer.appendChild(row);
+      });
+
+      // Animate probability bar widths cleanly
+      requestAnimationFrame(() => {
+        setTimeout(() => {
+          const bars = genreBarsContainer.querySelectorAll('[data-target-width]');
+          bars.forEach(bar => {
+            bar.style.width = bar.getAttribute('data-target-width');
+          });
+        }, 40);
+      });
+
+      // Reset Audio Insights dropdown to collapsed by default
+      setAudioInsightsExpanded(false);
+
+      // Populate Acoustic Signal Features
+      if (data.audio_features) {
+        if (metricSpectralCentroid) {
+          metricSpectralCentroid.textContent = Math.round(data.audio_features.spectral_centroid_hz).toLocaleString();
+        }
+        if (metricRmsEnergy) {
+          metricRmsEnergy.textContent = data.audio_features.rms_energy.toFixed(4);
+        }
+        if (metricZcr) {
+          metricZcr.textContent = (data.audio_features.zero_crossing_rate * 100).toFixed(2) + '%';
+        }
+      }
+
+      // Populate Mel-Spectrogram Segments
+      if (data.spectrogram_segments && data.spectrogram_segments.length > 0) {
+        currentSpectrogramSegments = data.spectrogram_segments;
+        if (spectrogramSegmentSelect) {
+          spectrogramSegmentSelect.innerHTML = '';
+          data.spectrogram_segments.forEach((seg, idx) => {
+            const opt = document.createElement('option');
+            opt.value = idx;
+            opt.textContent = seg.label;
+            spectrogramSegmentSelect.appendChild(opt);
+          });
+        }
+        displaySpectrogramSegment(0);
+      }
+
+      refreshIcons();
+    }
+
+    // -------------------------------------------------------------------------
+    // Audio Insights Dropdown & Spectrogram Segment Handling
+    // -------------------------------------------------------------------------
+    function setAudioInsightsExpanded(expanded) {
+      if (!audioInsightsToggle || !audioInsightsContent) return;
+      if (expanded) {
+        audioInsightsContent.classList.remove('hidden');
+        audioInsightsToggle.setAttribute('aria-expanded', 'true');
+        if (audioInsightsChevron) audioInsightsChevron.style.transform = 'rotate(180deg)';
+      } else {
+        audioInsightsContent.classList.add('hidden');
+        audioInsightsToggle.setAttribute('aria-expanded', 'false');
+        if (audioInsightsChevron) audioInsightsChevron.style.transform = 'rotate(0deg)';
+      }
+    }
+
+    if (audioInsightsToggle) {
+      audioInsightsToggle.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const isExpanded = audioInsightsToggle.getAttribute('aria-expanded') === 'true';
+        setAudioInsightsExpanded(!isExpanded);
+      });
+    }
+
+    function displaySpectrogramSegment(index) {
+      if (!currentSpectrogramSegments || !currentSpectrogramSegments[index]) return;
+      const seg = currentSpectrogramSegments[index];
+      if (spectrogramImage) spectrogramImage.src = seg.image_data;
+      if (spectrogramSegmentBadge) spectrogramSegmentBadge.textContent = seg.label;
+      if (spectrogramTimeStart) spectrogramTimeStart.textContent = `${seg.start_time.toFixed(2)}s`;
+      if (spectrogramTimeEnd) spectrogramTimeEnd.textContent = `${seg.end_time.toFixed(2)}s`;
+    }
+
+    if (spectrogramSegmentSelect) {
+      spectrogramSegmentSelect.addEventListener('change', (e) => {
+        displaySpectrogramSegment(parseInt(e.target.value, 10));
+      });
+    }
+
+    // -------------------------------------------------------------------------
+    // Reset App
+    // -------------------------------------------------------------------------
+    resetAppBtn.addEventListener('click', () => {
+      clearSelectedFile();
+      setAudioInsightsExpanded(false);
+      currentSpectrogramSegments = [];
+      resultsSection.classList.add('hidden');
+      loadingSection.classList.add('hidden');
+      errorSection.classList.add('hidden');
+      uploadSection.classList.remove('hidden');
+      refreshIcons();
+    });
+
+    // -------------------------------------------------------------------------
+    // Error Handling
+    // -------------------------------------------------------------------------
+    function showError(message) {
+      uploadSection.classList.add('hidden');
+      loadingSection.classList.add('hidden');
+      resultsSection.classList.add('hidden');
+      errorSection.classList.remove('hidden');
+      errorMessageText.textContent = message;
+      refreshIcons();
+    }
+
+    errorDismissBtn.addEventListener('click', () => {
+      errorSection.classList.add('hidden');
+      uploadSection.classList.remove('hidden');
+    });
+  </script>
+</body>
+</html>
