@@ -106,6 +106,8 @@ Once started, open your browser:
 | `GET` | `/` | Serves the interactive frontend web application (`index.html`) |
 | `POST` | `/predict` | Upload audio (`.wav`, `.mp3`, `.ogg`) $\rightarrow$ Slices into 3s chunks $\rightarrow$ Extracts Log Mel-Spectrograms $\rightarrow$ Returns top genre, soft-voted probabilities, acoustic metrics, and spectrogram images |
 | `POST` | `/waveform` | Computes a normalized 200-point amplitude envelope for client-side rendering |
+| `GET` | `/evaluation` | Returns pre-computed model evaluation results (95.10% test accuracy, macro F1, per-genre metrics) |
+| `GET` | `/evaluation/confusion-matrix` | Serves high-resolution confusion matrix heatmap PNG |
 | `GET` | `/health` | Returns health status, model readiness, and the 10 target genre labels |
 | `GET` | `/test.wav` | Serves a built-in sample audio file for instant 1-click testing in the UI |
 
@@ -115,12 +117,18 @@ Once started, open your browser:
 
 ```text
 genre-classification/
-├── index.html                           # Single-page interactive web studio
+├── index.html                           # Single-page interactive web studio with tabs (Studio, Architecture, Evaluation, Dataset)
 ├── main.py                              # FastAPI application & inference engine
 ├── requirements.txt                     # Python package dependencies
 ├── MODEL_WORKFLOW_AND_ARCHITECTURE.md   # Detailed model workflow & CNN architecture
 ├── README.md                            # Project setup & run documentation
 ├── test.wav                             # Built-in sample audio for testing
+├── evaluation/                          # Offline evaluation artifacts & metrics
+│   ├── evaluation_results.json          # Stratified test set metrics (accuracy, F1, precision, recall)
+│   ├── confusion_matrix.png             # Visual confusion matrix heatmap
+│   └── classification_report.txt        # Detailed scikit-learn text report
+├── scripts/
+│   └── evaluate_model.py                # Standalone academic evaluation script (zero segment leakage)
 ├── models/
 │   ├── genre_classifier_cnn.keras       # Pre-trained 2D-CNN Keras model
 │   └── genre_labels.json                # Ordered list of the 10 genre classes
